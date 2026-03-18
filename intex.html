@@ -154,10 +154,21 @@
                         <input type="text" id="foodNote" class="w-full border border-gray-300 rounded-lg p-2 focus:ring-2 focus:ring-orange-500 outline-none text-sm" placeholder="如: 湯不要蔥、麵要爛一點">
                     </div>
 
-                    <button type="submit" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg mt-2 transition shadow-md active:scale-95">
-                        上傳點餐紀錄
+                    <button type="submit" class="w-full bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-300 font-bold py-2.5 rounded-lg mt-2 transition shadow-sm active:scale-95">
+                        ➕ 加入此品項 (暫存)
                     </button>
                 </form>
+
+                <!-- 個人暫存明細區塊 -->
+                <div id="draftArea" class="mt-4 hidden bg-white p-3 rounded-lg border border-orange-200 shadow-sm">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2 border-b border-gray-100 pb-2">🛒 <span id="draftUserName"></span> 的待送出清單：</h3>
+                    <ul id="draftList" class="space-y-2 mb-3 max-h-40 overflow-y-auto no-scrollbar">
+                        <!-- 暫存項目 -->
+                    </ul>
+                    <button type="button" onclick="confirmOrder()" class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 rounded-lg transition shadow-md active:scale-95 flex justify-center items-center gap-2">
+                        <span>✅</span> 確認完成 (正式送出)
+                    </button>
+                </div>
             </section>
 
             <!-- 訂單列表 (彙總) -->
@@ -186,13 +197,16 @@
 
         </main>
 
-        <!-- 底部固定操作列 (發送給指定人員) -->
+        <!-- 底部固定操作列 -->
         <div class="fixed bottom-0 w-full max-w-md bg-white border-t border-gray-200 p-3 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10 flex gap-2">
-            <button onclick="clearOrders()" class="px-4 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition active:scale-95">
+            <button onclick="clearOrders()" class="px-3 py-3 bg-gray-200 text-gray-700 font-bold rounded-lg hover:bg-gray-300 transition active:scale-95 whitespace-nowrap">
                 清空
             </button>
-            <button onclick="exportToExcel()" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg shadow-md flex items-center justify-center gap-2 transition active:scale-95">
-                <span>📥</span> 滙總上傳 (下載Excel)
+            <button onclick="uploadOrders()" class="flex-1 bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 rounded-lg shadow-md flex items-center justify-center gap-1 transition active:scale-95 text-sm sm:text-base">
+                <span>☁️</span> 上傳清單
+            </button>
+            <button onclick="openDetailsModal()" class="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-3 rounded-lg shadow-md flex items-center justify-center gap-1 transition active:scale-95 text-sm sm:text-base">
+                <span>📄</span> 開啟明細
             </button>
         </div>
 
@@ -203,10 +217,47 @@
         通知訊息
     </div>
 
+    <!-- 明細表格 Modal 彈跳視窗 -->
+    <div id="detailsModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex justify-center items-center p-4">
+        <div class="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[85vh] flex flex-col transform transition-all">
+            <!-- Modal Header -->
+            <div class="flex justify-between items-center p-4 border-b border-gray-200 bg-orange-50 rounded-t-xl">
+                <h3 class="text-lg font-bold text-orange-800 flex items-center gap-2"><span>📋</span> 點餐明細總表</h3>
+                <button onclick="closeDetailsModal()" class="text-gray-500 hover:text-red-500 p-1 bg-white rounded-full shadow-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            
+            <!-- Modal Body (表格內容) -->
+            <div class="p-0 overflow-y-auto flex-1 no-scrollbar">
+                <table class="w-full text-left text-sm text-gray-600">
+                    <thead class="bg-gray-100 text-gray-700 sticky top-0 shadow-sm">
+                        <tr>
+                            <th class="p-3 font-semibold whitespace-nowrap">單位/姓名</th>
+                            <th class="p-3 font-semibold">餐點 (數量)</th>
+                            <th class="p-3 font-semibold text-right">小計</th>
+                        </tr>
+                    </thead>
+                    <tbody id="detailsTableBody" class="divide-y divide-gray-200">
+                        <!-- JS 動態產生 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Modal Footer (總計) -->
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center rounded-b-xl">
+                <span class="font-bold text-gray-700">總計金額：</span>
+                <span id="modalTotalPrice" class="text-xl font-bold text-orange-600">$0</span>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript 邏輯 -->
     <script>
         // 儲存訂單的陣列
         let orders = [];
+        // 儲存個人暫存的陣列
+        let draftItems = [];
 
         // DOM 元素
         const form = document.getElementById('orderForm');
@@ -239,11 +290,13 @@
             }
         };
 
-        // 表單提交事件
+        // 表單提交事件 (改為加入暫存)
         form.addEventListener('submit', function(e) {
             e.preventDefault(); // 防止網頁重新整理
 
+            const empName = document.getElementById('empName').value;
             const selectedOption = foodItemSelect.options[foodItemSelect.selectedIndex];
+            
             if (!selectedOption.value) {
                 showToast('⚠️ 請選擇餐點品項！');
                 return;
@@ -252,33 +305,119 @@
             const qty = parseInt(foodQtyInput.value) || 1;
             const unitPrice = parseFloat(selectedOption.getAttribute('data-price'));
 
-            // 建立訂單物件
-            const newOrder = {
+            // 建立暫存項目
+            const draftItem = {
                 id: Date.now(),
-                name: document.getElementById('empName').value,
-                dept: document.getElementById('empDept').value,
                 item: selectedOption.value,
                 qty: qty,
-                price: Math.round(unitPrice * qty), // 避免浮點數誤差
-                note: document.getElementById('foodNote').value || '無'
+                price: Math.round(unitPrice * qty),
+                note: document.getElementById('foodNote').value || ''
             };
 
-            orders.push(newOrder);
-            updateUI();
+            draftItems.push(draftItem);
             
-            // 清空部分表單，保留部門方便同部門連續點餐
-            document.getElementById('empName').value = '';
+            // 更新暫存區 UI
+            document.getElementById('draftUserName').innerText = empName;
+            updateDraftUI();
+            
+            // 清空部分表單以便連續加點
             document.getElementById('foodNote').value = '';
             foodItemSelect.value = '';
+            // 重置數量，會被 change 事件重新賦值，預設給 10
             foodQtyInput.value = '10';
 
-            showToast('✅ 點餐成功上傳！');
+            showToast('📌 品項已暫存，請記得點擊「確認完成」送出喔！');
         });
+
+        // 更新暫存區畫面
+        function updateDraftUI() {
+            const draftArea = document.getElementById('draftArea');
+            const draftList = document.getElementById('draftList');
+
+            if (draftItems.length === 0) {
+                draftArea.classList.add('hidden');
+            } else {
+                draftArea.classList.remove('hidden');
+                draftList.innerHTML = draftItems.map(d => `
+                    <li class="flex justify-between items-center bg-orange-50 p-2 rounded-md border border-orange-100 text-sm">
+                        <div class="flex-1">
+                            <span class="font-bold text-gray-800">${d.item}</span>
+                            <span class="text-orange-600 font-bold mx-1">x${d.qty}</span>
+                            <span class="text-gray-500 text-xs">($${d.price})</span>
+                            ${d.note ? `<div class="text-xs text-gray-500 mt-0.5">備註: ${d.note}</div>` : ''}
+                        </div>
+                        <button type="button" onclick="removeDraft(${d.id})" class="text-gray-400 hover:text-red-500 p-1">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                        </button>
+                    </li>
+                `).join('');
+            }
+        }
+
+        // 移除暫存項目
+        window.removeDraft = function(id) {
+            draftItems = draftItems.filter(d => d.id !== id);
+            updateDraftUI();
+        };
+
+        // 確認完成並正式送出
+        window.confirmOrder = function() {
+            const name = document.getElementById('empName').value;
+            const dept = document.getElementById('empDept').value;
+
+            if (!name || !dept) {
+                showToast('⚠️ 請確保姓名與單位已填寫！');
+                return;
+            }
+
+            if (draftItems.length === 0) {
+                showToast('⚠️ 購物車內沒有餐點喔！');
+                return;
+            }
+
+            // 將暫存項目加入正式總表
+            draftItems.forEach(d => {
+                orders.push({
+                    id: Date.now() + Math.random(), // 確保多筆加入時 ID 唯一
+                    name: name,
+                    dept: dept,
+                    item: d.item,
+                    qty: d.qty,
+                    price: d.price,
+                    note: d.note || '無'
+                });
+            });
+
+            // 清空暫存
+            draftItems = [];
+            updateDraftUI();
+            
+            // 更新正式列表
+            updateUI();
+            
+            // 清空姓名，方便下一位填寫 (保留單位，因為通常同單位會一起點)
+            document.getElementById('empName').value = '';
+
+            showToast(`✅ ${name} 的點餐已確認送出！`);
+        };
 
         // 刪除單筆訂單
         function deleteOrder(id) {
             orders = orders.filter(order => order.id !== id);
             updateUI();
+        }
+
+        // 模擬上傳訂單至雲端
+        function uploadOrders() {
+            if (orders.length === 0) {
+                showToast('⚠️ 目前沒有訂單可以上傳！');
+                return;
+            }
+            showToast('⏳ 正在上傳資料...');
+            // 模擬網路延遲
+            setTimeout(() => {
+                showToast('✅ 清單已成功上傳！');
+            }, 800);
         }
 
         // 清空所有訂單
@@ -346,82 +485,47 @@
             }
         }
 
-        // 滙總上傳並導出 Excel 功能
-        function exportToExcel() {
+        // 開啟明細表格 Modal
+        function openDetailsModal() {
             if (orders.length === 0) {
-                showToast('⚠️ 目前沒有訂單可以匯出！');
+                showToast('⚠️ 目前沒有點餐紀錄！');
                 return;
             }
 
-            // 1. 準備明細資料 (依照樓層排序)
-            // 將訂單陣列複製一份後，依照樓層 (dept) 進行排序
+            const tbody = document.getElementById('detailsTableBody');
+            let html = '';
+            let totalAmount = 0;
+
+            // 將訂單依照樓層排序，方便查看
             const sortedOrders = [...orders].sort((a, b) => a.dept.localeCompare(b.dept));
-            
-            // 轉換為 Excel 接受的 JSON 格式
-            const detailsData = sortedOrders.map(o => ({
-                "樓層/單位": o.dept,
-                "姓名": o.name,
-                "餐點品項": o.item,
-                "數量": o.qty,
-                "總價": o.price,
-                "備註": o.note
-            }));
 
-            // 2. 準備總計資料 (給店家看的叫貨單)
-            const itemCounts = {};
-            let totalAmt = 0;
-            let totalQty = 0;
-
-            orders.forEach(o => {
-                totalAmt += o.price;
-                totalQty += o.qty;
-                if (!itemCounts[o.item]) {
-                    itemCounts[o.item] = { qty: 0, price: 0 };
-                }
-                itemCounts[o.item].qty += o.qty;
-                itemCounts[o.item].price += o.price;
+            sortedOrders.forEach(order => {
+                totalAmount += order.price;
+                html += `
+                    <tr class="hover:bg-orange-50 transition-colors">
+                        <td class="p-3 align-top">
+                            <div class="font-bold text-gray-800">${order.name}</div>
+                            <div class="inline-block mt-1 text-xs bg-gray-200 text-gray-600 px-1.5 py-0.5 rounded">${order.dept}</div>
+                        </td>
+                        <td class="p-3 align-top">
+                            <div class="text-gray-800">${order.item} <span class="text-orange-500 font-bold ml-1">x${order.qty}</span></div>
+                            ${order.note ? `<div class="text-xs text-orange-600 mt-1 bg-orange-100 inline-block px-1 rounded">註: ${order.note}</div>` : ''}
+                        </td>
+                        <td class="p-3 text-right font-bold text-gray-700 align-middle whitespace-nowrap">
+                            $${order.price}
+                        </td>
+                    </tr>
+                `;
             });
 
-            const summaryData = Object.keys(itemCounts).map(item => ({
-                "餐點品項": item,
-                "總數量": itemCounts[item].qty,
-                "總金額": itemCounts[item].price
-            }));
-            
-            // 加入空行與最後的總計列
-            summaryData.push({});
-            summaryData.push({ 
-                "餐點品項": "【總計】", 
-                "總數量": totalQty, 
-                "總金額": totalAmt 
-            });
+            tbody.innerHTML = html;
+            document.getElementById('modalTotalPrice').innerText = `$${totalAmount}`;
+            document.getElementById('detailsModal').classList.remove('hidden');
+        }
 
-            // 3. 建立 Excel 活頁簿 (Workbook)
-            const wb = XLSX.utils.book_new();
-            
-            // 將資料轉換為工作表 (Worksheet)
-            const wsDetails = XLSX.utils.json_to_sheet(detailsData);
-            const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-
-            // 設定欄位寬度讓表格更好看
-            wsDetails['!cols'] = [{wch: 12}, {wch: 12}, {wch: 20}, {wch: 8}, {wch: 10}, {wch: 25}];
-            wsSummary['!cols'] = [{wch: 25}, {wch: 10}, {wch: 15}];
-
-            // 將工作表加入活頁簿中
-            XLSX.utils.book_append_sheet(wb, wsDetails, "各樓層明細 (發餐用)");
-            XLSX.utils.book_append_sheet(wb, wsSummary, "餐點總計 (訂餐用)");
-
-            // 4. 下載 Excel 檔案
-            const dateStr = new Date().toLocaleDateString().replace(/\//g, '');
-            const fileName = `八方雲集訂單_${dateStr}.xlsx`;
-            
-            try {
-                XLSX.writeFile(wb, fileName);
-                showToast('✅ 滙總完成！Excel 檔案已下載');
-            } catch (err) {
-                showToast('❌ 下載失敗，請確認瀏覽器權限');
-                console.error(err);
-            }
+        // 關閉明細表格 Modal
+        function closeDetailsModal() {
+            document.getElementById('detailsModal').classList.add('hidden');
         }
 
         // 顯示提示訊息 (取代 alert)
